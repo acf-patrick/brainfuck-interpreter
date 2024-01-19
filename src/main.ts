@@ -1,25 +1,14 @@
 import * as fs from "fs/promises";
 
 const MEMORY_CAPACITY = 1024; // 1Kb
+const argc = process.argv.length;
 
-enum OpKind {
-  INCREMENT,
-  DECREMENT,
-  LEFT,
-  RIGHT,
-  INPUT,
-  OUTPUT,
-  JUMP_IF_ZERO,
-  JUMP_IF_NONZERO,
+if (argc <= 2) {
+  throw new Error("No input file provided");
 }
 
-type Op = {
-  kind: OpKind;
-  operand: number; // Number of OpKind to operate
-};
-
-if (process.argv.length <= 2) {
-  throw new Error("No input file provided");
+if (argc > 3) {
+  throw new Error("Invalid number of arguments provided");
 }
 
 async function getInput(): Promise<Buffer> {
@@ -30,28 +19,32 @@ async function getInput(): Promise<Buffer> {
   });
 }
 
+async function readOrUse(path: string) {
+  try {
+    return await fs.readFile(path, "utf-8");
+  } catch {
+    return path;
+  }
+}
+
 async function main(sourceFile: string) {
-  const input = await getInput();
-  const code = await fs.readFile(sourceFile, "utf-8");
-  const ops: Op[] = [];
+  
+  /* 
+  Grabbing the whole stdin buffer is easy-peasy in C but 
+  Idk how to do it in TS so for compilation sake, I will just put this empty array here.
+  Thus, ',' instruction won't work as expected, anyway...
+  */
+ const input: number[] = [];
+ // const input = await getInput();
 
-  let prevChar = "";
+  const output: number[] = [];
+  const code = await readOrUse(sourceFile);
+
   const validChars = "><+-.,[]";
-
-  let charToOp: Record<string, OpKind> = {
-    ">": OpKind.RIGHT,
-    "<": OpKind.LEFT,
-    "+": OpKind.INCREMENT,
-    "-": OpKind.DECREMENT,
-    ".": OpKind.OUTPUT,
-    ",": OpKind.INPUT,
-    "[": OpKind.JUMP_IF_ZERO,
-    "]": OpKind.JUMP_IF_NONZERO,
-  };
-
   let dataPointer = 0;
   let instructionPointer = 0;
   let inputPointer = 0;
+  let brackets = new Map<number, number>();
 
   const memory = new Array<number>(MEMORY_CAPACITY).fill(0);
 
@@ -92,16 +85,15 @@ async function main(sourceFile: string) {
 
       case "-":
         if (memory[dataPointer] == 0) {
-          throw new Error(
-            "Negative value provided for memory cell : " + dataPointer
-          );
+          memory[dataPointer] = 0xff;
+        } else {
+          memory[dataPointer]--;
         }
 
-        memory[dataPointer]--;
         break;
 
       case ".":
-        process.stdout.write(String.fromCharCode(memory[dataPointer]));
+        output.push(memory[dataPointer]);
         break;
 
       case ",":
@@ -125,56 +117,51 @@ async function main(sourceFile: string) {
 
     if (char == "[") {
       if (memory[dataPointer] == 0) {
-        let count = 1;
-        for (
-          ;
-          count > 0 && instructionPointer < code.length;
-          ++instructionPointer
-        ) {
-          const char = code[instructionPointer];
-          if (char == "[") {
-            count++;
-          }
-          if (char == "]") {
-            count--;
-          }
-        }
+        if (brackets.has(instructionPointer)) {
+          instructionPointer = brackets.get(instructionPointer)!;
+        } else {
+          let count = 1;
+          const origin = instructionPointer++;
 
-        if (count != 0) {
-          // throw new Error("No matching b")
+          for (
+            ;
+            count > 0 && instructionPointer < code.length;
+            ++instructionPointer
+          ) {
+            const char = code[instructionPointer];
+            if (char == "[") {
+              count++;
+            }
+            if (char == "]") {
+              count--;
+            }
+          }
+
+          if (count != 0) {
+            throw new Error(
+              "No matching pair for brackets at " + instructionPointer
+            );
+          } else {
+            brackets.set(origin, instructionPointer - 1);
+          }
         }
       } else {
         loopStack.push(instructionPointer);
-        execute(char);
       }
-    }
-
-    if (char == "]") {
+    } else if (char == "]") {
       if (memory[dataPointer] == 0) {
         loopStack.pop();
-        execute(char);
       } else {
-        loopStack[loopStack.length - 1]
+        instructionPointer = loopStack[loopStack.length - 1];
       }
-    }
-
-    if (char != "[" && char != "]") {
-      if (prevChar == char) {
-        ops[ops.length - 1].operand++;
-        continue;
-      }
-
-      ops.push({
-        kind: charToOp[char],
-        operand: 1,
-      });
     } else {
+      execute(char);
     }
-
-    prevChar = char;
   }
 
-  console.log(ops);
+  if (output.length > 0) {
+    console.log(String.fromCharCode(...output));
+  }
 }
 
 main(process.argv[2]).catch((err) => console.error(err));
