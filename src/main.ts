@@ -117,10 +117,45 @@ async function main(sourceFile: string) {
     }
   };
 
-  for (; inputPointer < code.length; ++inputPointer) {
-    const char = code[instructionPointer]
+  for (; instructionPointer < code.length; ++instructionPointer) {
+    const char = code[instructionPointer];
     if (!validChars.includes(char)) {
       continue;
+    }
+
+    if (char == "[") {
+      if (memory[dataPointer] == 0) {
+        let count = 1;
+        for (
+          ;
+          count > 0 && instructionPointer < code.length;
+          ++instructionPointer
+        ) {
+          const char = code[instructionPointer];
+          if (char == "[") {
+            count++;
+          }
+          if (char == "]") {
+            count--;
+          }
+        }
+
+        if (count != 0) {
+          // throw new Error("No matching b")
+        }
+      } else {
+        loopStack.push(instructionPointer);
+        execute(char);
+      }
+    }
+
+    if (char == "]") {
+      if (memory[dataPointer] == 0) {
+        loopStack.pop();
+        execute(char);
+      } else {
+        loopStack[loopStack.length - 1]
+      }
     }
 
     if (char != "[" && char != "]") {
