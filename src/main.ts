@@ -11,14 +11,6 @@ if (argc > 3) {
   throw new Error("Invalid number of arguments provided");
 }
 
-async function getInput(): Promise<Buffer> {
-  return new Promise((res, rej) => {
-    process.on("data", (chunk) => {
-      res(chunk);
-    });
-  });
-}
-
 async function readOrUse(path: string) {
   try {
     return await fs.readFile(path, "utf-8");
@@ -27,16 +19,15 @@ async function readOrUse(path: string) {
   }
 }
 
-async function main(sourceFile: string) {
-  
-  /* 
-  Grabbing the whole stdin buffer is easy-peasy in C but 
-  Idk how to do it in TS so for compilation sake, I will just put this empty array here.
-  Thus, ',' instruction won't work as expected, anyway...
-  */
- const input: number[] = [];
- // const input = await getInput();
+async function getInput(): Promise<Buffer> {
+  return new Promise((res, rej) => {
+    process.stdin.on("data", (chunk) => res(chunk));
+    const input = process.stdin.read();
+  });
+}
 
+async function main(sourceFile: string) {
+  const input = await getInput();
   const output: number[] = [];
   const code = await readOrUse(sourceFile);
 
@@ -80,7 +71,9 @@ async function main(sourceFile: string) {
           }
           dataPointer++;
         }
+
         memory[dataPointer]++;
+
         break;
 
       case "-":
@@ -97,11 +90,10 @@ async function main(sourceFile: string) {
         break;
 
       case ",":
-        if (inputPointer >= input.length) {
-          throw new Error("No more value to read from input");
+        if (inputPointer < input.length) {
+          memory[dataPointer] = input[inputPointer++];
         }
 
-        memory[dataPointer] = input[inputPointer];
         break;
 
       default:
